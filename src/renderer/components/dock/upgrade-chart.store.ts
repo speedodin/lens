@@ -89,7 +89,7 @@ export class UpgradeChartStore extends DockTabStore<IChartUpgradeData> {
   async loadValues(tabId: TabId) {
     this.values.clearData(tabId); // reset
     const { releaseName, releaseNamespace } = this.getData(tabId);
-    const values = await helmReleasesApi.getValues(releaseName, releaseNamespace);
+    const values = await helmReleasesApi.getValues(releaseName, releaseNamespace, true);
 
     this.values.setData(tabId, values);
   }

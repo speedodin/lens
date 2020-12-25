@@ -113,8 +113,8 @@ export const helmReleasesApi = {
     return apiBase.del(path);
   },
 
-  getValues(name: string, namespace: string) {
-    const path = `${endpoint({ name, namespace })}/values`;
+  getValues(name: string, namespace: string, all: boolean) {
+    const path = `${endpoint({ name, namespace })}/values${all? "?all": ""}`;
 
     return apiBase.get<string>(path);
   },
