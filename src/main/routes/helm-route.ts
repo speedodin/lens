@@ -2,6 +2,7 @@ import { LensApiRequest } from "../router";
 import { helmService } from "../helm/helm-service";
 import { LensApi } from "../lens-api";
 import logger from "../logger";
+import { getBoolean } from "./utils/parse-query";
 
 class HelmApiRoute extends LensApi {
   public async listCharts(request: LensApiRequest) {
@@ -101,10 +102,11 @@ class HelmApiRoute extends LensApi {
   }
 
   public async getReleaseValues(request: LensApiRequest) {
-    const { cluster, params, response, query } = request;
+    const { cluster, params: { namespace, release }, response, query } = request;
+    const all = getBoolean(query, "all");
 
     try {
-      const result = await helmService.getReleaseValues(cluster, params.release, params.namespace, query.has("all"));
+      const result = await helmService.getReleaseValues(release, { cluster, namespace, all });
 
       this.respondText(response, result);
     } catch (error) {

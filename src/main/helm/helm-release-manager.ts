@@ -6,6 +6,12 @@ import { helmCli } from "./helm-cli";
 import { Cluster } from "../cluster";
 import { toCamelCase } from "../../common/utils/camelCase";
 
+interface GetValuesOptions {
+  namespace: string;
+  all?: boolean;
+  pathToKubeconfig: string;
+}
+
 export class HelmReleaseManager {
 
   public async listReleases(pathToKubeconfig: string, namespace?: string) {
@@ -86,16 +92,21 @@ export class HelmReleaseManager {
 
   public async deleteRelease(name: string, namespace: string, pathToKubeconfig: string) {
     const helm = await helmCli.binaryPath();
-    const { stdout  } = await promiseExec(`"${helm}" delete ${name} --namespace ${namespace} --kubeconfig ${pathToKubeconfig}`).catch((error) => { throw(error.stderr);});
+    const { stdout } = await promiseExec(`"${helm}" delete ${name} --namespace ${namespace} --kubeconfig ${pathToKubeconfig}`).catch((error) => { throw(error.stderr);});
 
     return stdout;
   }
 
-  public async getValues(name: string, namespace: string, all: boolean, pathToKubeconfig: string) {
+  public async getValues(name: string, { namespace, all, pathToKubeconfig }: GetValuesOptions) {
     const helm = await helmCli.binaryPath();
-    const { stdout,  } = await promiseExec(`"${helm}" get values ${name} ${all? "--all": ""} --output yaml --namespace ${namespace} --kubeconfig ${pathToKubeconfig}`).catch((error) => { throw(error.stderr);});
 
-    return stdout;
+    try {
+      const { stdout } = await promiseExec(`"${helm}" get values ${name} ${all ? "--all" : ""} --output yaml --namespace ${namespace} --kubeconfig ${pathToKubeconfig}`);
+
+      return stdout;
+    } catch (error) {
+      throw error.stderr;
+    }
   }
 
   public async getHistory(name: string, namespace: string, pathToKubeconfig: string) {

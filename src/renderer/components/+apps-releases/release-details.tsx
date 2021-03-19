@@ -37,7 +37,7 @@ export class ReleaseDetails extends Component<Props> {
   @observable details: IReleaseDetails;
   @observable values = "";
   @observable valuesLoading = false;
-  @observable userSuppliedOnly = false;
+  @observable showOnlyUserSuppliedValues = false;
   @observable saving = false;
   @observable releaseSecret: Secret;
 
@@ -47,8 +47,7 @@ export class ReleaseDetails extends Component<Props> {
     this.loadDetails();
     this.loadValues();
     this.releaseSecret = null;
-  }
-  );
+  });
 
   @disposeOnUnmount
   secretWatcher = reaction(() => secretsStore.items.toJS(), () => {
@@ -71,12 +70,23 @@ export class ReleaseDetails extends Component<Props> {
     this.details = await helmReleasesApi.get(release.getName(), release.getNs());
   }
 
+  @disposeOnUnmount
+  valuesLoader = reaction(() => this.showOnlyUserSuppliedValues, () => {
+    this.loadValues();
+  });
+
   async loadValues() {
     const { release } = this.props;
 
-    this.values = "";
     this.valuesLoading = true;
-    this.values = (await helmReleasesApi.getValues(release.getName(), release.getNs(), !this.userSuppliedOnly)) ?? "";
+
+    try {
+      this.values = (await helmReleasesApi.getValues(release.getName(), release.getNs(), !this.showOnlyUserSuppliedValues)) ?? "";
+    } catch (error) {
+      Notifications.error(`Failed to load values for ${release.getName()}: ${error}`);
+      this.values = "";
+    }
+
     this.valuesLoading = false;
   }
 
@@ -120,21 +130,19 @@ export class ReleaseDetails extends Component<Props> {
         <div className="flex column gaps">
           <Checkbox
             label="User-supplied values only"
-            value={this.userSuppliedOnly}
-            onChange={values => {
-              this.userSuppliedOnly = values;
-              this.loadValues();
-            }}
+            value={this.showOnlyUserSuppliedValues}
+            onChange={value => this.showOnlyUserSuppliedValues = value}
             disabled={valuesLoading}
           />
-          {valuesLoading
-            ? <Spinner />
-            : <AceEditor
-              mode="yaml"
-              value={values}
-              onChange={values => this.values = values}
-            />
-          }
+          <AceEditor
+            mode="yaml"
+            value={values}
+            onChange={text => this.values = text}
+            className={cssNames({ loading: valuesLoading })}
+            readOnly={valuesLoading || this.showOnlyUserSuppliedValues}
+          >
+            {valuesLoading && <Spinner center />}
+          </AceEditor>
           <Button
             primary
             label="Save"
