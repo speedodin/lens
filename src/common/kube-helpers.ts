@@ -7,6 +7,7 @@ import logger from "../main/logger";
 import commandExists from "command-exists";
 import { ExecValidationNotFoundError } from "./custom-errors";
 import { Cluster, Context, newClusters, newContexts, newUsers, User } from "@kubernetes/client-node/dist/config_types";
+import { resolvePath } from "./utils";
 
 export type KubeConfigValidationOpts = {
   validateCluster?: boolean;
@@ -16,16 +17,16 @@ export type KubeConfigValidationOpts = {
 
 export const kubeConfigDefaultPath = path.join(os.homedir(), ".kube", "config");
 
-function resolveTilde(filePath: string) {
-  if (filePath[0] === "~" && (filePath[1] === "/" || filePath.length === 1)) {
-    return filePath.replace("~", os.homedir());
-  }
+export function loadConfigFromFileSync(filePath: string): KubeConfig {
+  const content = fse.readFileSync(resolvePath(filePath), "utf-8");
 
-  return filePath;
+  return loadConfigFromString(content);
 }
 
-function readResolvedPathSync(filePath: string): string {
-  return fse.readFileSync(path.resolve(resolveTilde(filePath)), "utf8");
+export async function loadConfigFromFile(filePath: string): Promise<KubeConfig> {
+  const content = await fse.readFile(resolvePath(filePath), "utf-8");
+
+  return loadConfigFromString(content);
 }
 
 function checkRawCluster(rawCluster: any): boolean {
@@ -71,67 +72,50 @@ export function loadFromOptions(options: KubeConfigOptions): KubeConfig {
   return kc;
 }
 
-export function loadConfig(pathOrContent?: string): KubeConfig {
-  return loadConfigFromString(
-    fse.pathExistsSync(pathOrContent)
-      ? readResolvedPathSync(pathOrContent)
-      : pathOrContent
-  );
-}
-
 export function loadConfigFromString(content: string): KubeConfig {
   return loadFromOptions(loadToOptions(content));
 }
 
-/**
- * KubeConfig is valid when there's at least one of each defined:
- * - User
- * - Cluster
- * - Context
- * @param config KubeConfig to check
- */
-export function validateConfig(config: KubeConfig | string): KubeConfig {
-  if (typeof config == "string") {
-    config = loadConfig(config);
-  }
-  logger.debug(`validating kube config: ${JSON.stringify(config)}`);
-
-  if (!config.users || config.users.length == 0) {
-    throw new Error("No users provided in config");
+function errorsToError(errors: string[]): undefined | string {
+  if (errors.length === 0) {
+    return undefined;
   }
 
-  if (!config.clusters || config.clusters.length == 0) {
-    throw new Error("No clusters provided in config");
-  }
+  return errors.join("\n");
+}
 
-  if (!config.contexts || config.contexts.length == 0) {
-    throw new Error("No contexts provided in config");
-  }
-
-  return config;
+export interface SplitConfigEntry {
+  config: KubeConfig,
+  error?: string;
 }
 
 /**
  * Breaks kube config into several configs. Each context as it own KubeConfig object
  */
-export function splitConfig(kubeConfig: KubeConfig): KubeConfig[] {
-  const configs: KubeConfig[] = [];
+export function splitConfig(kubeConfig: KubeConfig): SplitConfigEntry[] {
+  const { contexts = [] } = kubeConfig;
 
-  if (!kubeConfig.contexts) {
-    return configs;
-  }
-  kubeConfig.contexts.forEach(ctx => {
-    const kc = new KubeConfig();
+  return contexts.map(context => {
+    const config = new KubeConfig();
+    const errors = [];
 
-    kc.clusters = [kubeConfig.getCluster(ctx.cluster)].filter(n => n);
-    kc.users = [kubeConfig.getUser(ctx.user)].filter(n => n);
-    kc.contexts = [kubeConfig.getContextObject(ctx.name)].filter(n => n);
-    kc.setCurrentContext(ctx.name);
+    config.clusters = [kubeConfig.getCluster(context.cluster)].filter(Boolean);
+    config.users = [kubeConfig.getUser(context.user)].filter(Boolean);
+    config.contexts = [kubeConfig.getContextObject(context.name)].filter(n => n);
 
-    configs.push(kc);
+    config.setCurrentContext(context.name);
+
+    try {
+      validateKubeConfig(config, context.name);
+    } catch (error) {
+      errors.push(String(error));
+    }
+
+    return {
+      config,
+      error: errorsToError(errors),
+    };
   });
-
-  return configs;
 }
 
 export function dumpConfigYaml(kubeConfig: Partial<KubeConfig>): string {

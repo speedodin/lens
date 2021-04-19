@@ -8,7 +8,7 @@ import { ContextHandler } from "./context-handler";
 import { AuthorizationV1Api, CoreV1Api, HttpError, KubeConfig, V1ResourceAttributes } from "@kubernetes/client-node";
 import { Kubectl } from "./kubectl";
 import { KubeconfigManager } from "./kubeconfig-manager";
-import { loadConfig, validateKubeConfig } from "../common/kube-helpers";
+import { loadConfigFromFile, loadConfigFromFileSync, validateKubeConfig } from "../common/kube-helpers";
 import request, { RequestPromiseOptions } from "request-promise-native";
 import { apiResources, KubeApiResource } from "../common/rbac";
 import logger from "./logger";
@@ -261,7 +261,7 @@ export class Cluster implements ClusterModel, ClusterState {
     this.updateModel(model);
 
     try {
-      const kubeconfig = this.getKubeconfig();
+      const kubeconfig = loadConfigFromFileSync(this.kubeConfigPath);
       const error = validateKubeConfig(kubeconfig, this.contextName, { validateCluster: true, validateUser: false, validateExec: false});
 
       if (error) {
@@ -507,8 +507,8 @@ export class Cluster implements ClusterModel, ClusterState {
     this.allowedResources = await this.getAllowedResources();
   }
 
-  protected getKubeconfig(): KubeConfig {
-    return loadConfig(this.kubeConfigPath);
+  getKubeconfig(): Promise<KubeConfig> {
+    return loadConfigFromFile(this.kubeConfigPath);
   }
 
   /**
@@ -517,7 +517,7 @@ export class Cluster implements ClusterModel, ClusterState {
   async getProxyKubeconfig(): Promise<KubeConfig> {
     const kubeconfigPath = await this.getProxyKubeconfigPath();
 
-    return loadConfig(kubeconfigPath);
+    return loadConfigFromFile(kubeconfigPath);
   }
 
   /**
