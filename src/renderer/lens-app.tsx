@@ -32,10 +32,11 @@ export class LensApp extends React.Component {
     window.addEventListener("online", () => broadcastMessage("network:online"));
 
     registerIpcHandlers();
-    ipcRenderer.send(IpcRendererNavigationEvents.LOADED);
   }
 
   componentDidMount() {
+    ipcRenderer.send(IpcRendererNavigationEvents.LOADED);
+
     reaction(() => catalogEntityRegistry.items, (items) => {
       if (!commandRegistry.activeEntity) {
         return;

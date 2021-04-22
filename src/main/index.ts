@@ -170,7 +170,7 @@ app.on("ready", async () => {
   installDeveloperTools();
 
   if (!startHidden) {
-    windowManager.initMainWindow();
+    windowManager.ensureMainWindow();
   }
 
   ipcMain.on(IpcRendererNavigationEvents.LOADED, () => {
@@ -221,7 +221,7 @@ app.on("activate", (event, hasVisibleWindows) => {
   logger.info("APP:ACTIVATE", { hasVisibleWindows });
 
   if (!hasVisibleWindows) {
-    WindowManager.getInstance(false)?.initMainWindow(false);
+    WindowManager.getInstance(false)?.ensureMainWindow(false);
   }
 });
 

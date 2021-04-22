@@ -1,12 +1,12 @@
 import type { ClusterId } from "../common/cluster-store";
 import { observable } from "mobx";
-import { app, BrowserWindow, dialog, shell, webContents } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, webContents } from "electron";
 import windowStateKeeper from "electron-window-state";
 import { appEventBus } from "../common/event-bus";
 import { subscribeToBroadcast } from "../common/ipc";
 import { initMenu } from "./menu";
 import { initTray } from "./tray";
-import { Singleton } from "../common/utils";
+import { delay, Singleton } from "../common/utils";
 import { ClusterFrameInfo, clusterFrameMap } from "../common/cluster-frames";
 import { IpcRendererNavigationEvents } from "../renderer/navigation/events";
 import logger from "./logger";
@@ -30,7 +30,7 @@ export class WindowManager extends Singleton {
     return `http://localhost:${this.proxyPort}`;
   }
 
-  async initMainWindow(showSplash = true) {
+  private async initMainWindow(showSplash: boolean) {
     // Manage main window size and position with state persistence
     if (!this.windowState) {
       this.windowState = windowStateKeeper({
@@ -95,13 +95,8 @@ export class WindowManager extends Singleton {
       if (showSplash) await this.showSplash();
       logger.info(`[WINDOW-MANAGER]: Loading Main window from url: ${this.mainUrl} ...`);
       await this.mainWindow.loadURL(this.mainUrl);
-      this.mainWindow.show();
-      this.splashWindow?.close();
-      setTimeout(() => {
-        appEventBus.emit({ name: "app", action: "start" });
-      }, 1000);
     } catch (error) {
-      logger.error("Showing main window failed", { error });
+      logger.error("Loading main window failed", { error });
       dialog.showErrorBox("ERROR!", error.toString());
     }
   }
@@ -121,9 +116,32 @@ export class WindowManager extends Singleton {
     });
   }
 
-  async ensureMainWindow(): Promise<BrowserWindow> {
-    if (!this.mainWindow) await this.initMainWindow();
-    this.mainWindow.show();
+  async ensureMainWindow(showSplash = true): Promise<BrowserWindow> {
+    // This needs to be ready to hear the IPC message before the window is loaded
+    let viewHasLoaded = Promise.resolve();
+
+    if (!this.mainWindow) {
+      viewHasLoaded = new Promise<void>(resolve => {
+        ipcMain.once(IpcRendererNavigationEvents.LOADED, () => resolve());
+      });
+      await this.initMainWindow(showSplash);
+    }
+
+    try {
+      await viewHasLoaded;
+      await delay(50); // wait just a bit longer to let the first round of rendering happen
+      logger.info("[WINDOW-MANAGER]: Main window has reported that it has loaded");
+
+      this.mainWindow.show();
+      this.splashWindow?.close();
+      this.splashWindow = undefined;
+      setTimeout(() => {
+        appEventBus.emit({ name: "app", action: "start" });
+      }, 1000);
+    } catch (error) {
+      logger.error(`Showing main window failed: ${error.stack || error}`);
+      dialog.showErrorBox("ERROR!", error.toString());
+    }
 
     return this.mainWindow;
   }
@@ -181,8 +199,8 @@ export class WindowManager extends Singleton {
   }
 
   hide() {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) this.mainWindow.hide();
-    if (this.splashWindow && !this.splashWindow.isDestroyed()) this.splashWindow.hide();
+    if (!this.mainWindow?.isDestroyed()) this.mainWindow.hide();
+    if (!this.splashWindow?.isDestroyed()) this.splashWindow.hide();
   }
 
   destroy() {
