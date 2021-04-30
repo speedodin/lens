@@ -8,7 +8,7 @@ import stream from "stream";
 import { Disposer, ExtendedObservableMap, iter, Singleton } from "../../common/utils";
 import logger from "../logger";
 import { KubeConfig } from "@kubernetes/client-node";
-import { loadConfigFromString, splitConfig, validateKubeConfig } from "../../common/kube-helpers";
+import { loadConfigFromString, splitConfig } from "../../common/kube-helpers";
 import { Cluster } from "../cluster";
 import { catalogEntityFromCluster } from "../cluster-manager";
 import { UserStore } from "../../common/user-store";
@@ -101,18 +101,16 @@ export class KubeconfigSyncManager extends Singleton {
 }
 
 // exported for testing
-export function configToModels(config: KubeConfig, filePath: string): UpdateClusterModel[] {
+export function configToModels(rootConfig: KubeConfig, filePath: string): UpdateClusterModel[] {
   const validConfigs = [];
 
-  for (const contextConfig of splitConfig(config)) {
-    const error = validateKubeConfig(contextConfig, contextConfig.currentContext);
-
+  for (const { config, error } of splitConfig(rootConfig)) {
     if (error) {
-      logger.debug(`${logPrefix} context failed validation: ${error}`, { context: contextConfig.currentContext, filePath });
+      logger.debug(`${logPrefix} context failed validation: ${error}`, { context: config.currentContext, filePath });
     } else {
       validConfigs.push({
         kubeConfigPath: filePath,
-        contextName: contextConfig.currentContext,
+        contextName: config.currentContext,
       });
     }
   }
